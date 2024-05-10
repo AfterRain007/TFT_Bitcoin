@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import darts
 from darts import TimeSeries
 from darts.dataprocessing.transformers import Scaler
 from darts.utils.timeseries_generation import datetime_attribute_timeseries
@@ -53,7 +54,7 @@ class DatasetInterface:
 
         elif type == 1:
             if lenWin > 1:
-                raise TypeError("Handle Outlier for Isolation Forest need argument windows length of > 1")
+                raise TypeError("Outlier Handling with Isolation Forest need argument windows length of > 1")
             # Isolation Forest & Rolling Average Method
             model_IF = IsolationForest(contamination=float(0.1),random_state=42069)
             model_IF.fit(self.df[columns])
@@ -110,11 +111,11 @@ class DatasetInterface:
 
     def initialize_covariate(self, split):
         # feature engineering - create time covariates: hour, weekday, month, year, country-specific holidays
-        covT = datetime_attribute_timeseries(self.target.time_index, attribute="day", one_hot=False, add_length=len(self.train_target))
+        covT = datetime_attribute_timeseries(self.target, attribute="day", one_hot=False, add_length=0)
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="week"))
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="month"))
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="year"))
-        covT = covT.stack(TimeSeries.from_times_and_values(times=covT.time_index, values=np.arange(len(self.target) + len(self.train_target)), columns=["linear_increase"]))
+        covT = covT.stack(TimeSeries.from_times_and_values(times=covT.time_index, values=np.arange(len(self.target)), columns=["linear_increase"]))
         covT = covT.add_holidays(country_code="US")
         covT = covT.astype(np.float32)
         
@@ -127,10 +128,12 @@ class DatasetInterface:
         # rescale the covariates: fitting on the training set   
         scalerT = Scaler()
         scalerT.fit(covT_train)
+        self.covariate = scalerT.transform(covT)
         # covT_ttrain = scalerT.transform(covT_train)
         # covT_ttest = scalerT.transform(covT_test)
-        self.covariate = scalerT.transform(covT)
+        # self.covariate = scalerT.transform(covT)
         
-        # covT_ttrain = covT_ttrain.astype(np.float32)
-        # covT_ttest  = covT_ttest.astype(np.float32)
-        self.covariate      = self.covariate.astype(np.float32)
+        # covT_ttrain    = covT_ttrain.astype(np.float32)
+        # covT_ttest     = covT_ttest.astype(np.float32)
+
+        self.covariate = self.covariate.astype(np.float32)
