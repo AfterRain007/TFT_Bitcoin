@@ -10,17 +10,16 @@ class DatasetInterface:
     def __init__(self):
         self.df = None
         self.target = None
+        self.trainTarget = None
+        self.valTarget = None
+
         self.feature = None
+        self.trainFeature = None
+        self.valFeature = None
 
-        self.train_target = None
-        self.test_target = None
-        self.cov_target = None
-
-        self.train_feature = None
-        self.test_feature = None
-        self.cov_feature = None
-
-        self.covariate = None
+        self.timeCovariate = None
+        self.trainTimeCovariate = None
+        self.valTimeCovariate = None
 
     def initialize_dataset(self, DIR):
         self.df = pd.read_csv(DIR, parse_dates=['date'], index_col = ['date'], usecols = ['date', 'trend', 'price', 'volume', 'sen'])
@@ -74,53 +73,53 @@ class DatasetInterface:
         else:
             print("Skipping Outlier Handling")
             
-    def create_timeseries(self, split = 0.8, useCovariates = False):
+    def create_timeseries(self, split = 0.8):
         self.target = TimeSeries.from_dataframe(self.df[['price']])
         self.feature = TimeSeries.from_dataframe(self.df[['sen', 'volume', 'trend']])
         
         # train/test split and scaling of target variable
-        self.train_target, self.test_target = self.target.split_after(split)
+        self.trainTarget, self.valTarget = self.target.split_after(split)
         
         scalerP = Scaler()
-        scalerP.fit_transform(self.train_target)
+        scalerP.fit_transform(self.trainTarget)
         
-        self.train_target = scalerP.transform(self.train_target)
-        self.test_target  = scalerP.transform(self.test_target)
+        self.trainTarget = scalerP.transform(self.trainTarget)
+        self.valTarget  = scalerP.transform(self.valTarget)
         # ts_t = scalerP.transform(ts_P)
         
         # make sure data are of type float
         # ts_t = ts_t.astype(np.float32)
-        self.train_target = self.train_target.astype(np.float32)
-        self.test_target  = self.test_target.astype(np.float32)
+        self.trainTarget = self.trainTarget.astype(np.float32)
+        self.valTarget = self.valTarget.astype(np.float32)
         
         # train/test split and scaling of feature covariates
-        self.train_feature, self.test_feature = self.feature.split_after(split)
+        self.trainFeature, self.valFeature = self.feature.split_after(split)
         
         scalerF = Scaler()
-        scalerF.fit_transform(self.train_feature)
-        self.train_feature = scalerF.transform(self.train_feature)
-        self.test_feature  = scalerF.transform(self.test_feature)
-        # covF_t = scalerF.transform(ts_covF)
+        scalerF.fit_transform(self.trainFeature)
+        self.trainFeature = scalerF.transform(self.trainFeature)
+        self.valFeature  = scalerF.transform(self.valFeature)
         
+        self.initialize_time_covariate(split)
+
         # make sure data are of type float
-        self.train_feature = self.train_feature.astype(np.float32)
-        self.test_feature = self.test_feature.astype(np.float32)
+        self.feature = self.feature.astype(np.float32)
+        self.trainFeature = self.trainFeature.astype(np.float32)
+        self.valFeature = self.valFeature.astype(np.float32)
 
-        if useCovariates:
-            self.initialize_covariate(split)
 
-    def initialize_covariate(self, split):
+    def initialize_time_covariate(self, split):
         # feature engineering - create time covariates: hour, weekday, month, year, country-specific holidays
-        covT = datetime_attribute_timeseries(self.target, attribute="day", one_hot=False, add_length=0)
+        covT = datetime_attribute_timeseries(self.feature, attribute="day", one_hot=False, add_length=0)
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="week"))
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="month"))
         covT = covT.stack(datetime_attribute_timeseries(covT.time_index, attribute="year"))
-        covT = covT.stack(TimeSeries.from_times_and_values(times=covT.time_index, values=np.arange(len(self.target)), columns=["linear_increase"]))
+        covT = covT.stack(TimeSeries.from_times_and_values(times=covT.time_index, values=np.arange(len(self.feature)), columns=["linear_increase"]))
         covT = covT.add_holidays(country_code="US")
         covT = covT.astype(np.float32)
         
         # train/test split
-        covT_train, covT_test = covT.split_after(split)
+        covT_train, covT_val = covT.split_after(split)
         
         # combine feature and time covariates along component dimension: axis=1
         # ts_cov = ts_covF.concatenate( covT.slice_intersect(self.feature), axis=1 )                      # unscaled F+T
@@ -128,12 +127,10 @@ class DatasetInterface:
         # rescale the covariates: fitting on the training set   
         scalerT = Scaler()
         scalerT.fit(covT_train)
-        self.covariate = scalerT.transform(covT)
-        # covT_ttrain = scalerT.transform(covT_train)
-        # covT_ttest = scalerT.transform(covT_test)
-        # self.covariate = scalerT.transform(covT)
-        
-        # covT_ttrain    = covT_ttrain.astype(np.float32)
-        # covT_ttest     = covT_ttest.astype(np.float32)
+        self.timeCovariate = scalerT.transform(covT)
+        self.trainTimeCovariate = scalerT.transform(covT_train)
+        self.valTimeCovariate = scalerT.transform(covT_val)
 
-        self.covariate = self.covariate.astype(np.float32)
+        self.feature = self.feature.stack(self.timeCovariate)
+        self.trainFeature = self.trainFeature.stack(self.trainTimeCovariate)
+        self.valFeature = self.valFeature.stack(self.valTimeCovariate)

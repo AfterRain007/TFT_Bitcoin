@@ -1,0 +1,2 @@
+,in_len,out_len,kernel_size,num_filters,weight_norm,dilation_base,num_layers,dropout,lr,batch_size,RMSE
+0,25,24,21,7,True,1,1,0.1427726646443856,0.0006381471475880582,128,5783497216.0
