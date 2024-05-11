@@ -15,8 +15,8 @@ def main():
             "dropout": [0, 0.3],
             "batchSize": [32, 64, 128, 256],
             "learningRate": [1e-5, 1e-3],
-            "epochs" : 2,
-            'valEpochs' : 1
+            "epochs" : 100,
+            'valEpochs' : 10
         },
         "GRU": {
             "inputChunkLength": [1, 31],
@@ -26,8 +26,8 @@ def main():
             "dropout": [0, 0.3],
             "batchSize": [32, 64, 128, 256],
             "learningRate": [1e-5, 1e-3],
-            "epochs" : 2,
-            'valEpochs' : 1
+            "epochs" : 100,
+            'valEpochs' : 10
         },
         "TFT": {
             "inputLength": [1, 31],
@@ -40,20 +40,8 @@ def main():
             "batchSize": [32, 64, 128, 256],
             "fullAttention": [True, False],
             "learningRate": [1e-5, 1e-3],
-            "epochs" : 2,
-            'valEpochs' : 1
-        },
-        "TCN": {
-            "inputLength": [2, 31],
-            "numFilters": [2, 8],
-            'weightNorm' : [True, False],
-            "dilationBase": [1, 5],
-            "numLayers": [1, 5],
-            "dropout": [0, 0.3],
-            "batchSize": [32, 64, 128, 256],
-            "learningRate": [1e-5, 1e-3],
-            "epochs" : 20,
-            'valEpochs' : 5
+            "epochs" : 100,
+            'valEpochs' : 10
         }
     }
     
@@ -66,13 +54,13 @@ def main():
             data.create_timeseries(split = 0.8)
 
             model = ModelInterface(modelName)
-            model.trialAmount = 1
+            model.trialAmount = 100
             model.useStaticCovariates = cov
             model.verbose = False
             model.initializeData(data.trainTarget, data.valTarget, data.feature)
             model.parameter = parameters[modelName]
             model.train()   
-            model.saveResult()
+            model.saveResult(f"./res/{modelName}-useStaticCovariates={cov}.csv")
 
 if __name__ == "__main__":
     main()

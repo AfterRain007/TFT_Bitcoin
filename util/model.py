@@ -1,4 +1,4 @@
-from darts.metrics import mape, mae, rmse
+from darts.metrics import rmse
 from darts import TimeSeries
 from darts.models import TFTModel, RNNModel, TCNModel
 from darts.dataprocessing.transformers import Scaler
@@ -7,7 +7,6 @@ from darts.utils.timeseries_generation import datetime_attribute_timeseries
 import optuna
 from optuna.integration import PyTorchLightningPruningCallback
 from pytorch_lightning.callbacks import EarlyStopping
-from sklearn.preprocessing import MaxAbsScaler, MinMaxScaler
 from torchmetrics import MeanSquaredError
 import numpy as np
 import time
@@ -52,22 +51,37 @@ class ModelInterface:
             'GRU' : self.GRU,
         }
 
-        def print_callback(study, trial):
-            # print(f"Current value: {trial.value}, Current params: {trial.params}")
-            # print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+        study = optuna.create_study(directions=["minimize"])
+        study.optimize(model_functions[self.modelName], n_trials=self.trialAmount, callbacks=[self.print_callback])  
+
+    def print_callback(self, study, trial):
+            print(f"Current value: {trial.value}, Current params: {trial.params}")
+            print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
 
             # Saving results into a list
             temp = trial.params
             temp.update({"RMSE" : trial.value})
             self.result.append(temp)
 
-        study = optuna.create_study(directions=["minimize"])
-        study.optimize(model_functions[self.modelName], n_trials=self.trialAmount, callbacks=[print_callback])  
-
-    def saveResult(self):
+    def saveResult(self, fileName):
         result = pd.DataFrame(self.result)
-        print(result)
-        result.to_csv(f"./res/{self.modelName}-useStaticCovariates={self.useStaticCovariates}.csv")
+        result.to_csv(fileName)
+
+    def trainAndTest(self):
+        # Training the model
+        self.model.fit(series = self.trainData,                     # Train Price
+                       val_series = self.ValData,                   # Val Price
+                       future_covariates = self.covariateData,      # Val Covariate
+                       val_future_covariates = self.covariateData,  # Val Covariate
+                       verbose = self.verbose)
+
+        # Predict using the model
+        pred = self.model.predict(len(self.ValData))
+
+        # Calculate RMSE
+        rmse_ = rmse(self.ValData, pred)
+
+        return rmse_
 
     def LSTM(self,trial):
         # Initialize Hyperparameters
@@ -80,7 +94,7 @@ class ModelInterface:
         learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
 
         # Input Hyperparameters into the LSTM Model
-        model = RNNModel(
+        self.model = RNNModel(
             model = "LSTM",
             hidden_dim = hiddenDim,
             n_rnn_layers = nRnnLayers,
@@ -99,7 +113,7 @@ class ModelInterface:
             pl_trainer_kwargs = self.plTrainerKwargs
         )
 
-        rmse_ = trainAndTest(model)
+        rmse_ = self.trainAndTest()
 
         return rmse_ if rmse_ != np.nan else float("inf")
 
@@ -114,7 +128,7 @@ class ModelInterface:
         learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
 
         # Input Hyperparameters into the GRU Model
-        model = RNNModel(
+        self.model = RNNModel(
             model = "GRU",
             hidden_dim = hiddenDim,
             n_rnn_layers = nRnnLayers,
@@ -133,7 +147,7 @@ class ModelInterface:
             pl_trainer_kwargs = self.plTrainerKwargs
         )
 
-        rmse_ = trainAndTest(model)
+        rmse_ = self.trainAndTest()
 
         return rmse_ if rmse_ != np.nan else float("inf")
 
@@ -152,7 +166,7 @@ class ModelInterface:
         learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
 
         # Input Hyperparameters into the TFT Model
-        model = TFTModel(
+        self.model = TFTModel(
             input_chunk_length = inputLength,
             output_chunk_length = outputLength,
             hidden_size = hiddenSize,
@@ -177,25 +191,9 @@ class ModelInterface:
             # likelihood=QuantileRegression(quantiles=[.01, .05, .1, .15, .2, .25, .3, .4, .5, .6, .7, .75, .8, .85, .90, .95, .99])
         )
 
-        rmse_ = trainAndTest(model)
+        rmse_ = self.trainAndTest()
 
         return rmse_ if rmse_ != np.nan else float("inf")
-
-    def trainAndTest(self, model):
-        # Training the model
-        self.model.fit(series = self.trainData,                     # Train Price
-                       val_series = self.ValData,                   # Val Price
-                       future_covariates = self.covariateData,      # Val Covariate
-                       val_future_covariates = self.covariateData,  # Val Covariate
-                       verbose = self.verbose)
-
-        # Predict using the model
-        pred = self.model.predict(len(self.ValData))
-
-        # Calculate RMSE
-        rmse_ = rmse(self.ValData, pred)
-
-        return rmse_
 
     ## There's an error here (The RMSE value is 700000 > and I don't know why soooooooooo)
     # def TCN(self, trial):
