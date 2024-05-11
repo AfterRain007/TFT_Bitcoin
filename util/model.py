@@ -27,6 +27,7 @@ class ModelInterface:
         self.trialAmount = 10
         self.verbose = True
         self.result = []
+        self.time = []
 
         self.plTrainerKwargs = {
             "accelerator": "auto",
