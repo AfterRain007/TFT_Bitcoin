@@ -27,7 +27,8 @@ class ModelInterface:
         self.trialAmount = 10
         self.verbose = True
         self.result = []
-        self.time = []
+        self.trainingTime = []
+        self.predictingTime = []
 
         self.plTrainerKwargs = {
             "accelerator": "auto",
@@ -65,19 +66,25 @@ class ModelInterface:
             self.result.append(temp)
 
     def saveResult(self, fileName):
+        self.result.update({"trainingTime": self.trainingTime, "predictingTime": self.predictingTime})
         result = pd.DataFrame(self.result)
         result.to_csv(fileName)
 
     def trainAndTest(self):
         # Training the model
+        start = time.time()
         self.model.fit(series = self.trainData,                     # Train Price
                        val_series = self.ValData,                   # Val Price
                        future_covariates = self.covariateData,      # Val Covariate
                        val_future_covariates = self.covariateData,  # Val Covariate
                        verbose = self.verbose)
+        
+        self.trainingTime.append(time.time() - start)
+        start = time.time()
 
         # Predict using the model
         pred = self.model.predict(len(self.ValData))
+        self.predictingTime.append(time.time() - start)
 
         # Calculate RMSE
         rmse_ = rmse(self.ValData, pred)
