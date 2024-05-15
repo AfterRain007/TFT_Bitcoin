@@ -25,4 +25,4 @@ Forecasting Bitcoin price using its Volume, Daily Sentiment, and Google Trends. 
 ## Credit
 Credit where credit's due, thank you for all!<br>
 [Main Reference](https://www.mdpi.com/2571-9394/5/1/10) by Kate Murray et al.<br>
-[Main Refrence Source Code](https://github.com/katemurraay/tsa_crt/tree/kmm4_branch) by Kate Murray
+[Main Reference Source Code](https://github.com/katemurraay/tsa_crt/tree/kmm4_branch) by Kate Murray
