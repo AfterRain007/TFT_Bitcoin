@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import torch
 import optuna
+import matplotlib.pyplot as plt
 from darts.metrics import rmse
 from darts.models import TFTModel, RNNModel
 from optuna.integration import PyTorchLightningPruningCallback
@@ -24,6 +25,8 @@ class ModelInterface:
         """String: Model name that's used"""
         self.parameter = {}
         """Dictionary: Dictionary of hyperparameters search space"""
+        self.fileName = ""
+        """file: Name of the file to save the results to"""
 
         self.trainData     = None
         """Darts Time Series: Target Training Dataset"""
@@ -40,12 +43,16 @@ class ModelInterface:
         """Bool: Whether to Print output of the training phase or not"""
         self.result = []
         """List: To Store the result of the hyperparameter search"""
+        self.resultDataframe = pd.DataFrame()
+        """Pandas Dataframe: To Store the result of the hyperparameter search"""
         self.trainingTime = []
         """List: To Store the amount of time it takes to train the model"""
         self.predictingTime = []
         """List: List of amount of time to predict using the model"""
         self.study = None
-        """Study: To Store the amount of time to predict using the model"""
+        """Study: To Store the optuna study format"""
+        self.pred = None
+        """Darts Time Series: Result of prediction using the model"""
 
     def initializeData(self, trainData, valData, covariateData):
         """
@@ -113,14 +120,20 @@ class ModelInterface:
         :param fileName: str: Name of the file to save the results to
         """
         # Convert the list of results into a DataFrame
-        result = pd.DataFrame(self.result)
+        self.fileName = fileName
+        self.resultDataframe = pd.DataFrame(self.result)
         
-        # Add training time and predicting time columns to the DataFrame
-        result['training_time'] = self.trainingTime
-        result['predicting_time'] = self.predictingTime
+        # Add training time, predicting time, and model name columns to the DataFrame
+        self.resultDataframe['training_time'] = self.trainingTime
+        self.resultDataframe['predicting_time'] = self.predictingTime
+        self.resultDataframe['model'] = self.modelName
+        self.resultDataframe['epochs'] = self.parameter['epochs'][0]
+        self.resultDataframe['valEpochs'] = self.parameter['valEpochs'][0]
+
+        # Retraining and saving the best model
         
         # Save the DataFrame to a CSV file
-        result.to_csv(fileName)
+        self.resultDataframe.to_csv(f"./res/{self.fileName}.csv", index = False)
 
     def trainAndTest(self):
         """
@@ -140,11 +153,11 @@ class ModelInterface:
 
         # Predict using the model and timing it
         start = time.time()
-        pred = self.model.predict(len(self.ValData))
+        self.pred = self.model.predict(len(self.ValData))
         self.predictingTime.append(time.time() - start)
 
         # Calculate RMSE
-        rmse_ = rmse(self.ValData, pred)
+        rmse_ = rmse(self.ValData, self.pred)
 
         return rmse_
 
@@ -156,26 +169,26 @@ class ModelInterface:
         :return: float: Root Mean Squared Error (RMSE) of the model's predictions on the validation data
         """
         # Initialize Hyperparameters
-        inputChunkLength = trial.suggest_int("input_chunk_length", self.parameter['inputChunkLength'][0], self.parameter['inputChunkLength'][1])
-        trainingLength = trial.suggest_int("training_length", inputChunkLength + 1, self.parameter['trainingLength'][0])
-        hiddenDim = trial.suggest_int("hidden_dim", self.parameter['hiddenDim'][0], self.parameter['hiddenDim'][1])
-        nRnnLayers = trial.suggest_categorical("n_rnn_layers", self.parameter['nRnnLayers'])
+        input_chunk_length = trial.suggest_int("input_chunk_length", self.parameter['input_chunk_length'][0], self.parameter['input_chunk_length'][1])
+        training_length = trial.suggest_int("training_length", input_chunk_length + 1, self.parameter['training_length'][0])
+        hidden_dim = trial.suggest_int("hidden_dim", self.parameter['hidden_dim'][0], self.parameter['hidden_dim'][1])
+        n_rnn_layers = trial.suggest_categorical("n_rnn_layers", self.parameter['n_rnn_layers'])
         dropout = trial.suggest_float("dropout", self.parameter['dropout'][0], self.parameter['dropout'][1])
-        batchSize = trial.suggest_categorical("batch_size", self.parameter['batchSize'])
-        learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
+        batch_size = trial.suggest_categorical("batch_size", self.parameter['batch_size'])
+        lr = trial.suggest_float("lr", self.parameter['lr'][0], self.parameter['lr'][1])
 
         # Input Hyperparameters into the LSTM Model
         self.model = RNNModel(
             model = "LSTM",
-            hidden_dim = hiddenDim,
-            n_rnn_layers = nRnnLayers,
+            hidden_dim = hidden_dim,
+            n_rnn_layers = n_rnn_layers,
             dropout = dropout,
-            batch_size = batchSize,
-            training_length = trainingLength,
-            input_chunk_length = inputChunkLength,
-            optimizer_kwargs = {"lr": learningRate},
-            n_epochs = self.parameter['epochs'],
-            nr_epochs_val_period = self.parameter['valEpochs'],
+            batch_size = batch_size,
+            training_length = training_length,
+            input_chunk_length = input_chunk_length,
+            optimizer_kwargs = {"lr": lr},
+            n_epochs = self.parameter['epochs'][0],
+            nr_epochs_val_period = self.parameter['valEpochs'][0],
             torch_metrics = MeanSquaredError(squared = False),
             log_tensorboard = True,
             random_state = 42069,
@@ -200,26 +213,26 @@ class ModelInterface:
         :return: float: Root Mean Squared Error (RMSE) of the model's predictions on the validation data
         """
         # Initialize Hyperparameters
-        inputChunkLength = trial.suggest_int("input_chunk_length", self.parameter['inputChunkLength'][0], self.parameter['inputChunkLength'][1])
-        trainingLength = trial.suggest_int("training_length", inputChunkLength + 1, self.parameter['trainingLength'][0])
-        hiddenDim = trial.suggest_int("hidden_dim", self.parameter['hiddenDim'][0], self.parameter['hiddenDim'][1])
-        nRnnLayers = trial.suggest_categorical("n_rnn_layers", self.parameter['nRnnLayers'])
+        input_chunk_length = trial.suggest_int("input_chunk_length", self.parameter['input_chunk_length'][0], self.parameter['input_chunk_length'][1])
+        training_length = trial.suggest_int("training_length", input_chunk_length + 1, self.parameter['training_length'][0])
+        hidden_dim = trial.suggest_int("hidden_dim", self.parameter['hidden_dim'][0], self.parameter['hidden_dim'][1])
+        n_rnn_layers = trial.suggest_categorical("n_rnn_layers", self.parameter['n_rnn_layers'])
         dropout = trial.suggest_float("dropout", self.parameter['dropout'][0], self.parameter['dropout'][1])
-        batchSize = trial.suggest_categorical("batch_size", self.parameter['batchSize'])
-        learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
+        batch_size = trial.suggest_categorical("batch_size", self.parameter['batch_size'])
+        lr = trial.suggest_float("lr", self.parameter['lr'][0], self.parameter['lr'][1])
 
         # Input Hyperparameters into the GRU Model
         self.model = RNNModel(
             model = "GRU",
-            hidden_dim = hiddenDim,
-            n_rnn_layers = nRnnLayers,
+            hidden_dim = hidden_dim,
+            n_rnn_layers = n_rnn_layers,
             dropout = dropout,
-            batch_size = batchSize,
-            training_length = trainingLength,
-            input_chunk_length = inputChunkLength,
-            optimizer_kwargs = {"lr": learningRate},
-            n_epochs = self.parameter['epochs'],
-            nr_epochs_val_period = self.parameter['valEpochs'],
+            batch_size = batch_size,
+            training_length = training_length,
+            input_chunk_length = input_chunk_length,
+            optimizer_kwargs = {"lr": lr},
+            n_epochs = self.parameter['epochs'][0],
+            nr_epochs_val_period = self.parameter['valEpochs'][0],
             torch_metrics = MeanSquaredError(squared = False),
             log_tensorboard = True,
             random_state = 42069,
@@ -245,34 +258,34 @@ class ModelInterface:
         """
         # Initialize Hyperparameters
         # Initialize Hyperparameters
-        inputLength = trial.suggest_int("in_len", self.parameter['inputLength'][0], self.parameter['inputLength'][1])
-        outputLength = trial.suggest_int("out_len", self.parameter['outputLength'][0], self.parameter['outputLength'][1])
-        hiddenSize = trial.suggest_int("hidden_size", self.parameter['hiddenSize'][0], self.parameter['hiddenSize'][1])
-        LSTMLayers = trial.suggest_categorical("lstm_layers", self.parameter['LSTMLayers'])
-        NumAttentionHeads = trial.suggest_int("num_attention_heads", self.parameter['NumAttentionHeads'][0], self.parameter['NumAttentionHeads'][1])
+        input_chunk_length = trial.suggest_int("input_chunk_length", self.parameter['input_chunk_length'][0], self.parameter['input_chunk_length'][1])
+        output_chunk_length = trial.suggest_int("output_chunk_length", self.parameter['output_chunk_length'][0], self.parameter['output_chunk_length'][1])
+        hidden_size = trial.suggest_int("hidden_size", self.parameter['hidden_size'][0], self.parameter['hidden_size'][1])
+        lstm_layers = trial.suggest_categorical("lstm_layers", self.parameter['lstm_layers'])
+        num_attention_heads = trial.suggest_int("num_attention_heads", self.parameter['num_attention_heads'][0], self.parameter['num_attention_heads'][1])
         dropout = trial.suggest_float("dropout", self.parameter['dropout'][0], self.parameter['dropout'][1])
-        hiddenContinuousSize = trial.suggest_int("hidden_continuous_size", self.parameter['hiddenContinuousSize'][0], self.parameter['hiddenContinuousSize'][1])
-        batchSize = trial.suggest_categorical("batch_size", self.parameter['batchSize'])
-        fullAttention = trial.suggest_categorical("full_attention", self.parameter['fullAttention'])
-        learningRate = trial.suggest_float("lr", self.parameter['learningRate'][0], self.parameter['learningRate'][1])
+        hidden_continuous_size = trial.suggest_int("hidden_continuous_size", self.parameter['hidden_continuous_size'][0], self.parameter['hidden_continuous_size'][1])
+        batch_size = trial.suggest_categorical("batch_size", self.parameter['batch_size'])
+        full_attention = trial.suggest_categorical("full_attention", self.parameter['full_attention'])
+        lr = trial.suggest_float("lr", self.parameter['lr'][0], self.parameter['lr'][1])
 
         # Input Hyperparameters into the TFT Model
         self.model = TFTModel(
-            input_chunk_length = inputLength,
-            output_chunk_length = outputLength,
-            hidden_size = hiddenSize,
-            lstm_layers = LSTMLayers,
-            num_attention_heads = NumAttentionHeads,
+            input_chunk_length = input_chunk_length,
+            output_chunk_length = output_chunk_length,
+            hidden_size = hidden_size,
+            lstm_layers = lstm_layers,
+            num_attention_heads = num_attention_heads,
             dropout = dropout,
-            hidden_continuous_size = hiddenContinuousSize,
+            hidden_continuous_size = hidden_continuous_size,
             use_static_covariates = self.useStaticCovariates,
-            batch_size = batchSize,
-            optimizer_kwargs = {'lr': learningRate},
-            n_epochs = self.parameter['epochs'],
-            nr_epochs_val_period = self.parameter['valEpochs'],
+            batch_size = batch_size,
+            optimizer_kwargs = {'lr': lr},
+            n_epochs = self.parameter['epochs'][0],
+            nr_epochs_val_period = self.parameter['valEpochs'][0],
             likelihood = None, 
             loss_fn = torch.nn.MSELoss(),
-            full_attention = fullAttention,
+            full_attention = full_attention,
             torch_metrics = MeanSquaredError(squared = False),
             random_state = 42069,
             force_reset= True,
@@ -350,3 +363,21 @@ class ModelInterface:
     #   rmse_ = rmse(self.ValData, pred)
 
     #   return rmse_ if rmse_ != np.nan else float("inf")
+    def get_best_model(self):
+        self.resultDataframe.sort_values(by = "RMSE", inplace = True)
+        self.parameter = self.resultDataframe.iloc[0].to_dict()
+        for key, value in self.parameter.items():
+            self.parameter[key] = [value, value]
+        self.trialAmount = 1
+        self.train()
+        bestPrediction = self.pred.pd_dataframe()
+        bestPrediction["true"] = self.ValData.pd_dataframe()
+
+        bestPrediction.to_csv(f"./best_result/{self.fileName}.csv")
+        plt.plot(bestPrediction['price'], label='Predicted Price')
+        plt.plot(bestPrediction['true'], label='True Price')
+        plt.title('Predicted vs True Price')
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+
+        plt.savefig(f"./plot/{self.fileName}.png")

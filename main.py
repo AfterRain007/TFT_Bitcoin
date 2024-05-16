@@ -1,5 +1,6 @@
 from util.dataset import *
 from util.model import *
+import itertools
 
 def main():
     DIR = "./data/dataRaw.csv"
@@ -7,70 +8,72 @@ def main():
     # Initialize hyperparameters
     parameters = {
         "LSTM": {
-            "inputChunkLength": [1, 31],
-            "trainingLength": [32],
-            "hiddenDim": [8, 32],
-            "nRnnLayers": [1, 2, 3],
+            "input_chunk_length": [1, 31],
+            "training_length": [32],
+            "hidden_dim": [8, 32],
+            "n_rnn_layers": [1, 2, 3],
             "dropout": [0, 0.3],
-            "batchSize": [32, 64, 128, 256],
-            "learningRate": [1e-5, 1e-3],
-            "epochs" : 100,
-            'valEpochs' : 10
+            "batch_size": [32, 64, 128, 256],
+            "lr": [1e-5, 1e-3],
+            "epochs" : [4],
+            'valEpochs' : [2]
         },
         "GRU": {
-            "inputChunkLength": [1, 31],
-            "trainingLength": [62],
-            "hiddenDim": [8, 32],
-            "nRnnLayers": [1, 2, 3],
+            "input_chunk_length": [1, 31],
+            "training_length": [62],
+            "hidden_dim": [8, 32],
+            "n_rnn_layers": [1, 2, 3],
             "dropout": [0, 0.3],
-            "batchSize": [32, 64, 128, 256],
-            "learningRate": [1e-5, 1e-3],
-            "epochs" : 100,
-            'valEpochs' : 10
+            "batch_size": [32, 64, 128, 256],
+            "lr": [1e-5, 1e-3],
+            "epochs" : [4],
+            'valEpochs' : [2]
         },
         "TFT": {
-            "inputLength": [1, 31],
-            "outputLength": [1, 31],
-            "hiddenSize": [8, 32],
-            "NumAttentionHeads" : [2, 8],
-            "LSTMLayers": [1, 2, 3],
+            "input_chunk_length": [1, 31],
+            "output_chunk_length": [1, 31],
+            "hidden_size": [8, 32],
+            "num_attention_heads" : [2, 8],
+            "lstm_layers": [1, 2, 3],
             "dropout": [0, 0.3],
-            "hiddenContinuousSize": [6, 10],
-            "batchSize": [32, 64, 128, 256],
-            "fullAttention": [True, False],
-            "learningRate": [1e-5, 1e-3],
-            "epochs" : 100,
-            'valEpochs' : 10
+            "hidden_continuous_size": [6, 10],
+            "batch_size": [32, 64, 128, 256],
+            "full_attention": [True, False],
+            "lr": [1e-5, 1e-3],
+            "epochs" : [4],
+            'valEpochs' : [2]
         }
     }
 
     # Set model list
-    modelList = ["LSTM", "GRU", "TFT"]
+    model_list = ["TFT", "LSTM", "GRU"]
+    outlier_handling_options = [0, 1]
+    cov_options = [False, True]
 
-    for cov in [False, True]:
-        for modelName in modelList:
-            # Initialize dataset object and load data
-            data = DatasetInterface()
-            data.initialize_dataset(DIR)
+    for outlierHandling, cov, modelName in itertools.product(outlier_handling_options, cov_options, model_list):
+        # Initialize dataset object and load data
+        data = DatasetInterface()
+        data.initialize_dataset(DIR)
 
-            # Preprocessing
-            data.handle_outlier(type = 0, lenWin = 0) # Handle outliers (0 for IQR, 1 and lenWin > 1 for Isolation Forest)
-            data.data_normalization(lenDiff = 30) # Normalize data using Pandas difference method
+        # Preprocessing
+        data.handle_outlier(type = outlierHandling, lenWin = 30) # Handle outliers (0 for IQR, 1 and lenWin > 1 for Isolation Forest)
+        data.data_normalization(lenDiff = 30) # Normalize data using Pandas difference method
 
-            # Create timeseries data with a split ratio of 80% training and 20% validation
-            data.create_timeseries(split=0.8)
+        # Create timeseries data with a split ratio of 80% training and 20% validation
+        data.create_timeseries(split=0.8)
 
-            # Initialize a model object and set the training settings
-            model = ModelInterface(modelName)
-            model.trialAmount = 100
-            model.useStaticCovariates = cov
-            model.verbose = True
-            model.initializeData(data.trainTarget, data.valTarget, data.feature)
+        # Initialize a model object and set the training settings
+        model = ModelInterface(modelName)
+        model.trialAmount = 2
+        model.useStaticCovariates = cov
+        model.verbose = True
+        model.initializeData(data.trainTarget, data.valTarget, data.feature)
 
-            # Set the hyperparameters, train the model, and save the data
-            model.parameter = parameters[modelName]
-            model.train()
-            model.saveResult(f"./res/{modelName}-useStaticCovariates={cov}.csv")
+        # Set the hyperparameters, train the model, and save the data
+        model.parameter = parameters[modelName]
+        model.train()
+        model.saveResult(f"{modelName}-useStaticCovariates={cov}-outlierHandling{outlierHandling}")
+        model.get_best_model()  
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,3 @@
+input_chunk_length,output_chunk_length,hidden_size,lstm_layers,num_attention_heads,dropout,hidden_continuous_size,batch_size,full_attention,lr,RMSE,training_time,predicting_time,model,epochs,valEpochs
+25,31,28,3,5,0.06403840016218292,10,64,True,0.0009033345461920457,0.21351507306098938,32.11857795715332,0.24884581565856934,TFT,4,2
+21,23,17,1,8,0.07802454193756288,10,256,True,0.000578686344465922,0.07903114706277847,17.48514676094055,0.24528741836547852,TFT,4,2

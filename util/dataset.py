@@ -133,7 +133,7 @@ class DatasetInterface:
         
         # Train/test split and scaling of feature covariates
         self.trainFeature, self.valFeature = self.feature.split_after(split)
-        
+            
         scalerF = Scaler()
         scalerF.fit_transform(self.trainFeature)
         self.trainFeature = scalerF.transform(self.trainFeature)
