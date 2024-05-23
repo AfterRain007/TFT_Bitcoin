@@ -67,13 +67,13 @@ def main():
         model.trialAmount = 2
         model.useStaticCovariates = cov
         model.verbose = True
-        model.initializeData(data.trainTarget, data.valTarget, data.feature)
+        model.initializeData(data.trainTarget, data.valTarget, data.feature, data.targetScaled)
 
         # Set the hyperparameters, train the model, and save the data
         model.parameter = parameters[modelName]
         model.train()
         model.saveResult(f"{modelName}-useStaticCovariates={cov}-outlierHandling{outlierHandling}")
-        model.get_best_model()  
+        model.get_best_model()
 
 if __name__ == "__main__":
     main()

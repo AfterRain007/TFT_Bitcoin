@@ -28,6 +28,8 @@ class ModelInterface:
         self.fileName = ""
         """file: Name of the file to save the results to"""
 
+        self.target     = None
+        """Darts Time Series: Target Dataset"""
         self.trainData     = None
         """Darts Time Series: Target Training Dataset"""
         self.ValData       = None
@@ -54,7 +56,7 @@ class ModelInterface:
         self.pred = None
         """Darts Time Series: Result of prediction using the model"""
 
-    def initializeData(self, trainData, valData, covariateData):
+    def initializeData(self, trainData, valData, covariateData, target):
         """
         Initializes the data for training/validation and covariates if applicable.
         
@@ -73,6 +75,9 @@ class ModelInterface:
         self.trainData = trainData
         # Assign validation data
         self.ValData = valData
+
+        # Assign feature data
+        self.target = target
 
     def train(self):
         """
@@ -363,21 +368,63 @@ class ModelInterface:
     #   rmse_ = rmse(self.ValData, pred)
 
     #   return rmse_ if rmse_ != np.nan else float("inf")
+
     def get_best_model(self):
-        self.resultDataframe.sort_values(by = "RMSE", inplace = True)
+        """
+        Identifies and saves the best model based on RMSE from the result DataFrame.
+        Additionally, it retrains the model, saves the best prediction results to a CSV file,
+        and generates a plot comparing predicted prices to true prices.
+        """
+        
+        # Sort the result DataFrame by RMSE in ascending order
+        self.resultDataframe.sort_values(by="RMSE", inplace=True)
+        
+        # Retrieve the parameters of the best model (with the lowest RMSE) as a dictionary
         self.parameter = self.resultDataframe.iloc[0].to_dict()
+        
+        # Convert each parameter value to a list containing two identical values
         for key, value in self.parameter.items():
             self.parameter[key] = [value, value]
+        
+        # Set the number of trials to 1 for retraining the best model
         self.trialAmount = 1
+        
+        # Retrain the model with the best parameters
         self.train()
+        
+        # Generate the best prediction DataFrame
         bestPrediction = self.pred.pd_dataframe()
+        
+        # Add the true values to the best prediction DataFrame
         bestPrediction["true"] = self.ValData.pd_dataframe()
-
+        
+        # Save the best prediction DataFrame to a CSV file
         bestPrediction.to_csv(f"./best_result/{self.fileName}.csv")
+        
+        # Plot predicted prices and true prices
         plt.plot(bestPrediction['price'], label='Predicted Price')
         plt.plot(bestPrediction['true'], label='True Price')
+        
+        # Add title and labels to the plot
         plt.title('Predicted vs True Price')
         plt.xlabel('Date')
         plt.ylabel('Price')
-
+        
+        # Save the plot to a PNG file
         plt.savefig(f"./plot/{self.fileName}.png")
+
+    def back_test(self):
+        backTest = self.model.backtest(series = self.target,
+                                       future_covariates = self.covariateData,
+                                       start = 0.8,
+                                       forecast_horizon = self.,
+                                       stride = 102,
+                                       verbose = True,
+                                       retrain = True,
+                                       metric = [rmse, mae, mape],
+                                       reduction = np.mean,
+                                       last_points_only = False
+                                      )
+
+        backTestResult.append(backTest)
+        dfBackTest = pd.DataFrame(backTestResult)

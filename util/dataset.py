@@ -13,6 +13,7 @@ class DatasetInterface:
         """
         self.df = None
         """DataFrame: The entire dataset"""
+        self.targetScaled = None
         self.target = None
         """DataFrame or Series: Target variable"""
         self.trainTarget = None
@@ -51,7 +52,7 @@ class DatasetInterface:
         if lenDiff < 1:
             warnings.warn("Skipping Data Normalization")
         else:
-            self.df.diff(periods=lenDiff)[lenDiff:]
+            self.df = self.df.diff(periods=lenDiff)[lenDiff:]
 
     def handle_outlier(self, type=-1, lenWin=-1):
         """
@@ -124,6 +125,7 @@ class DatasetInterface:
         scalerP = Scaler()
         scalerP.fit_transform(self.trainTarget)
         
+        self.targetScaled = scalerP.transform(self.target)
         self.trainTarget = scalerP.transform(self.trainTarget)
         self.valTarget = scalerP.transform(self.valTarget)
 
