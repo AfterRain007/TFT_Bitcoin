@@ -13,7 +13,6 @@ class DatasetInterface:
         """
         self.df = None
         """DataFrame: The entire dataset"""
-        self.targetScaled = None
         self.target = None
         """DataFrame or Series: Target variable"""
         self.trainTarget = None
@@ -43,7 +42,7 @@ class DatasetInterface:
         """
         self.df = pd.read_csv(DIR, parse_dates=['date'], index_col=['date'], usecols=['date', 'trend', 'price', 'volume', 'sen'])
 
-    def data_normalization(self, lenDiff=0):
+    def data_normalization(self, lenDiff = 0):
         """
         Perform data normalization by taking differences between consecutive values.
 

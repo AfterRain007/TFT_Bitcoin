@@ -4,7 +4,8 @@ import time
 import torch
 import optuna
 import matplotlib.pyplot as plt
-from darts.metrics import rmse
+import os
+from darts.metrics import rmse, mae, mape
 from darts.models import TFTModel, RNNModel
 from optuna.integration import PyTorchLightningPruningCallback
 from pytorch_lightning.callbacks import EarlyStopping
@@ -55,8 +56,27 @@ class ModelInterface:
         """Study: To Store the optuna study format"""
         self.pred = None
         """Darts Time Series: Result of prediction using the model"""
+        self.backtest = False
+        """Bool: Choose whether to do backtest or not"""
+        self.backtestResult = None
+        """Pandas Dataframe: To Store the result of the backtest"""
+        self.errorMetricsName = ""
+        """String: Error Metrics name that's used"""
+        self.errorMetrics = None
+        """String: Error Metrics that's used"""
+        self.modelFunctionsDict = {
+            'LSTM': self.LSTM,
+            'TFT': self.TFT,
+            'GRU': self.GRU,
+        }
 
-    def initializeData(self, trainData, valData, covariateData, target):
+        self.errorMetricsDict = {
+            'rmse': rmse,
+            'mae': mae,
+            'GRU': mape,
+        }
+
+    def initializeData(self, target, trainData, valData, covariateData):
         """
         Initializes the data for training/validation and covariates if applicable.
         
@@ -71,35 +91,32 @@ class ModelInterface:
         else:
             self.covariateData = covariateData[['volume', "sen", 'trend']]
 
+        # Assign feature data
+        self.target = target
         # Assign training data
         self.trainData = trainData
         # Assign validation data
         self.ValData = valData
-
-        # Assign feature data
-        self.target = target
 
     def train(self):
         """
         Trains the model using Optuna study with specified model functions.
         """
         # Dictionary mapping model names to their corresponding functions
-        model_functions = {
-            'LSTM': self.LSTM,
-            'TFT': self.TFT,
-            'GRU': self.GRU,
-        }
-
+        if self.errorMetricsName in self.errorMetricsDict:
+            self.errorMetrics = self.errorMetricsDict[self.errorMetricsName]
+        else:
+            raise ValueError(f"Unsupported error metric: {self.errorMetricsName}")
+        
         # Create an Optuna study for hyperparameter optimization
         self.study = optuna.create_study(directions=["minimize"])
         
         # Optimize the specified model function using Optuna
         self.study.optimize(
-            model_functions[self.modelName],   # Function to optimize for the current model
+            self.modelFunctionsDict[self.modelName],   # Function to optimize for the current model
             n_trials=self.trialAmount,         # Number of trials for optimization
             callbacks=[self.print_callback]    # Optional callback function for logging
         )
- 
 
     def print_callback(self, study, trial):
         """
@@ -115,7 +132,7 @@ class ModelInterface:
 
         # Saving results into a list
         temp = trial.params
-        temp.update({"RMSE": trial.value})
+        temp.update({self.errorMetricsName: trial.value})
         self.result.append(temp)
 
     def saveResult(self, fileName):
@@ -161,10 +178,10 @@ class ModelInterface:
         self.pred = self.model.predict(len(self.ValData))
         self.predictingTime.append(time.time() - start)
 
-        # Calculate RMSE
-        rmse_ = rmse(self.ValData, self.pred)
+        # Calculate error metrics
+        errorOutput = self.errorMetrics(self.ValData, self.pred)
 
-        return rmse_
+        return errorOutput
 
     def LSTM(self, trial):
         """
@@ -206,9 +223,9 @@ class ModelInterface:
                                                              mode='min')]}
             )
         
-        rmse_ = self.trainAndTest()
+        errorOutput = self.trainAndTest()
 
-        return rmse_ if rmse_ != np.nan else float("inf")
+        return errorOutput if errorOutput != np.nan else float("inf")
 
     def GRU(self, trial):
         """
@@ -250,9 +267,9 @@ class ModelInterface:
                                                              mode='min')]}
             )
 
-        rmse_ = self.trainAndTest()
+        errorOutput = self.trainAndTest()
 
-        return rmse_ if rmse_ != np.nan else float("inf")
+        return errorOutput if errorOutput != np.nan else float("inf")
 
     def TFT(self, trial):
         """
@@ -304,9 +321,9 @@ class ModelInterface:
             # likelihood=QuantileRegression(quantiles=[.01, .05, .1, .15, .2, .25, .3, .4, .5, .6, .7, .75, .8, .85, .90, .95, .99])
         )
 
-        rmse_ = self.trainAndTest()
+        errorOutput = self.trainAndTest()
 
-        return rmse_ if rmse_ != np.nan else float("inf")
+        return errorOutput if errorOutput != np.nan else float("inf")
 
     ## There's an error here (The RMSE value is 700000 > and I don't know why soooooooooo)
     # def TCN(self, trial):
@@ -369,15 +386,16 @@ class ModelInterface:
 
     #   return rmse_ if rmse_ != np.nan else float("inf")
 
-    def get_best_model(self):
+    def get_best_model(self, backtest = False, start = 0.8, lenBacktest = 4):
         """
         Identifies and saves the best model based on RMSE from the result DataFrame.
         Additionally, it retrains the model, saves the best prediction results to a CSV file,
         and generates a plot comparing predicted prices to true prices.
         """
-        
+        self.backtest = backtest
+
         # Sort the result DataFrame by RMSE in ascending order
-        self.resultDataframe.sort_values(by="RMSE", inplace=True)
+        self.resultDataframe.sort_values(by=self.errorMetricsName, inplace=True)
         
         # Retrieve the parameters of the best model (with the lowest RMSE) as a dictionary
         self.parameter = self.resultDataframe.iloc[0].to_dict()
@@ -400,31 +418,36 @@ class ModelInterface:
         
         # Save the best prediction DataFrame to a CSV file
         bestPrediction.to_csv(f"./best_result/{self.fileName}.csv")
-        
+
+        if self.backtest:
+            self.back_test(lenBacktest, start)
+
         # Plot predicted prices and true prices
+        plt.figure(figsize=(6, 5))
         plt.plot(bestPrediction['price'], label='Predicted Price')
         plt.plot(bestPrediction['true'], label='True Price')
-        
+
         # Add title and labels to the plot
-        plt.title('Predicted vs True Price')
+        plt.title(f'Predicted vs True Price\n{self.errorMetricsName}: {round(self.resultDataframe[self.errorMetricsName][0], 2)} (Validation), {round(self.backtestResult, 2)} (Backtest)')
         plt.xlabel('Date')
         plt.ylabel('Price')
-        
+        plt.legend()
+
         # Save the plot to a PNG file
+        if not os.path.exists("./plot"):
+            # Create the folder with 'exist_ok=True' to avoid errors if it already exists
+            os.makedirs("./plot", exist_ok=True)
         plt.savefig(f"./plot/{self.fileName}.png")
 
-    def back_test(self):
-        backTest = self.model.backtest(series = self.target,
-                                       future_covariates = self.covariateData,
-                                       start = 0.8,
-                                       forecast_horizon = self.,
-                                       stride = 102,
-                                       verbose = True,
-                                       retrain = True,
-                                       metric = [rmse, mae, mape],
-                                       reduction = np.mean,
-                                       last_points_only = False
-                                      )
-
-        backTestResult.append(backTest)
-        dfBackTest = pd.DataFrame(backTestResult)
+    def back_test(self, lenBacktest = 4, start = 0.8):
+        self.backtestResult = self.model.backtest(series = self.target,
+                                                  future_covariates = self.covariateData,
+                                                  start = start,
+                                                  forecast_horizon = int((len(self.target) * (1 - start)) / lenBacktest),
+                                                  stride = int((len(self.target) * (1 - start)) / lenBacktest),
+                                                  verbose = True,
+                                                  retrain = True,
+                                                  metric = self.errorMetrics,
+                                                  reduction = np.mean,
+                                                  last_points_only = False
+                                                  )
